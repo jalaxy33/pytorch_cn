@@ -32,7 +32,8 @@ jobs:
         git fetch upstream main --no-tags
         # 手动拉取以 v 开头的标签，过滤掉带有 ^{} 的无效引用
         for tag in $(git ls-remote --tags upstream | grep 'refs/tags/v' | grep -v '\^{}' | awk '{print $2}' | sed 's|refs/tags/||'); do
-          git fetch upstream tag $tag
+          # 强制拉取标签，覆盖本地标签
+          git fetch --force upstream tag $tag
         done
 
     # Step 4: 删除除 main 以外的所有本地分支
