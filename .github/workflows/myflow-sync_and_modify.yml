@@ -109,5 +109,6 @@ jobs:
         for tag in $(git tag -l 'v*'); do
           echo "Pushing tag $tag..."
           git push origin refs/tags/$tag
+        done
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 使用 GitHub token 进行身份验证
