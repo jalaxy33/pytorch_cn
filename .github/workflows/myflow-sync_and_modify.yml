@@ -49,15 +49,21 @@ jobs:
       run: |
         # 检出 main 分支
         git checkout main
-        # 如果 .gitmodules 存在，则进行替换
+        # 如果 .gitmodules 存在且有变动，则进行替换
         if [ -f .gitmodules ]; then
-          echo "Updating .gitmodules in main branch..."
-          # 只替换未被修改过的 URL
-          sed -i 's|^\([[:space:]]*url = \)https://github.com| \1https://ghp.ci/https://github.com|g' .gitmodules
-          git add .gitmodules
-          git commit -m "Update .gitmodules URLs for main branch"
-          # 同步子模块 URL
-          git submodule sync
+          echo "Checking for .gitmodules changes..."
+          git fetch origin main
+          if git diff --quiet origin/main -- .gitmodules; then
+            echo "No changes in .gitmodules, skipping update."
+          else
+            echo "Updating .gitmodules in main branch..."
+            # 只替换未被修改过的 URL
+            sed -i 's|^\([[:space:]]*url = \)https://github.com| \1https://ghp.ci/https://github.com|g' .gitmodules
+            git add .gitmodules
+            git commit -m "Update .gitmodules URLs for main branch"
+            # 同步子模块 URL
+            git submodule sync
+          fi
         else
           echo ".gitmodules not found in main branch, skipping..."
         fi
@@ -70,17 +76,23 @@ jobs:
           echo "Processing tag $tag..."
           # 检出标签对应的提交
           git checkout tags/$tag
-          # 如果 .gitmodules 存在，则进行替换
+          # 如果 .gitmodules 存在且有变动，则进行替换
           if [ -f .gitmodules ]; then
-            echo "Updating .gitmodules in tag $tag..."
-            # 只替换未被修改过的 URL
-            sed -i 's|^\([[:space:]]*url = \)https://github.com| \1https://ghp.ci/https://github.com|g' .gitmodules
-            git add .gitmodules
-            git commit -m "Update .gitmodules URLs for tag $tag"
-            # 同步子模块 URL
-            git submodule sync
-            # 推送更改（强制更新）
-            git push --force origin HEAD:refs/tags/$tag
+            echo "Checking for .gitmodules changes in tag $tag..."
+            git fetch origin refs/tags/$tag
+            if git diff --quiet origin/refs/tags/$tag -- .gitmodules; then
+              echo "No changes in .gitmodules for tag $tag, skipping update."
+            else
+              echo "Updating .gitmodules in tag $tag..."
+              # 只替换未被修改过的 URL
+              sed -i 's|^\([[:space:]]*url = \)https://github.com| \1https://ghp.ci/https://github.com|g' .gitmodules
+              git add .gitmodules
+              git commit -m "Update .gitmodules URLs for tag $tag"
+              # 同步子模块 URL
+              git submodule sync
+              # 推送更改（强制更新）
+              git push --force origin HEAD:refs/tags/$tag
+            fi
           else
             echo ".gitmodules not found in tag $tag, skipping..."
           fi
