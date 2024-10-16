@@ -68,8 +68,8 @@ jobs:
         # 遍历所有以 v 开头的标签
         for tag in $(git tag -l 'v*'); do
           echo "Processing tag $tag..."
-          # 检出标签到临时分支
-          git checkout tags/$tag -b temp-$tag
+          # 检出标签对应的提交
+          git checkout tags/$tag
           # 如果 .gitmodules 存在，则进行替换
           if [ -f .gitmodules ]; then
             echo "Updating .gitmodules in tag $tag..."
@@ -79,12 +79,8 @@ jobs:
             git commit -m "Update .gitmodules URLs for tag $tag"
             # 同步子模块 URL
             git submodule sync
-            # 推送临时分支以更新标签
-            git push origin temp-$tag
-            # 切回 main 分支
-            git checkout main
-            # 删除临时分支
-            git branch -d temp-$tag
+            # 推送更改
+            git push origin HEAD:refs/tags/$tag
           else
             echo ".gitmodules not found in tag $tag, skipping..."
           fi
