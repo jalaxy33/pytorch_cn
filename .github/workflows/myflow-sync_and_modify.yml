@@ -1,4 +1,4 @@
-name: <MyFlow> Sync PyTorch main branch and tags with submodule URL modification
+name: Sync PyTorch main branch and tags with submodule URL modification
 
 on:
   schedule:
@@ -35,7 +35,16 @@ jobs:
           git fetch upstream tag $tag
         done
 
-    # Step 4: 更新 main 分支中的 .gitmodules 文件并同步子模块 URL
+    # Step 4: 删除除 main 以外的所有本地分支
+    - name: Remove all branches except main
+      run: |
+        # 获取所有本地分支
+        for branch in $(git branch | grep -v 'main'); do
+          echo "Deleting branch $branch"
+          git branch -D $branch
+        done
+
+    # Step 5: 更新 main 分支中的 .gitmodules 文件并同步子模块 URL
     - name: Update .gitmodules and sync submodules for main branch
       run: |
         # 检出 main 分支
@@ -53,7 +62,7 @@ jobs:
           echo ".gitmodules not found in main branch, skipping..."
         fi
 
-    # Step 5: 更新以 v 开头的标签对应的分支中的 .gitmodules 文件并同步子模块 URL
+    # Step 6: 更新以 v 开头的标签对应的分支中的 .gitmodules 文件并同步子模块 URL
     - name: Update .gitmodules and sync submodules for tags starting with 'v'
       run: |
         # 遍历所有以 v 开头的标签
@@ -72,6 +81,8 @@ jobs:
             git submodule sync
             # 推送临时分支以更新标签
             git push origin temp-$tag
+            # 切回 main 分支
+            git checkout main
             # 删除临时分支
             git branch -d temp-$tag
           else
@@ -79,7 +90,7 @@ jobs:
           fi
         done
 
-    # Step 6: 推送所有更改
+    # Step 7: 推送所有更改
     - name: Push changes
       run: |
         # 推送 main 分支
