@@ -1,4 +1,4 @@
-name: Sync PyTorch main branch and tags with submodule URL modification
+name: <MyFlow> Sync PyTorch main branch and tags with submodule URL modification
 
 on:
   schedule:
