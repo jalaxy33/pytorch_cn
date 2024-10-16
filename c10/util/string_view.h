@@ -65,7 +65,7 @@ class basic_string_view final {
     return *this;
   }
 
-  operator ::std::basic_string_view<CharT>() const {
+  constexpr operator ::std::basic_string_view<CharT>() const {
     return ::std::basic_string_view<CharT>(data(), size());
   }
 
