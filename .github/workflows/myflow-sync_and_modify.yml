@@ -79,8 +79,8 @@ jobs:
             git commit -m "Update .gitmodules URLs for tag $tag"
             # 同步子模块 URL
             git submodule sync
-            # 推送更改
-            git push origin HEAD:refs/tags/$tag
+            # 推送更改（强制更新）
+            git push --force origin HEAD:refs/tags/$tag
           else
             echo ".gitmodules not found in tag $tag, skipping..."
           fi
