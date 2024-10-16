@@ -1,0 +1,93 @@
+name: <MyFlow> Sync PyTorch main branch and tags with submodule URL modification
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 每天凌晨 2 点 UTC 自动运行
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  sync-and-modify:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: 检出你自己的仓库
+    - name: Checkout your repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # Fetch all history so we can work with all branches and tags
+        submodules: true  # 同时检出子模块
+
+    # Step 2: 配置 Git 提交者信息
+    - name: Configure Git user
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+    # Step 3: 添加 PyTorch 官方仓库为 upstream 并获取 main 分支和以 v 开头的标签
+    - name: Add PyTorch upstream and fetch main and v* tags
+      run: |
+        # 添加 PyTorch 官方仓库为 upstream
+        git remote add upstream https://github.com/pytorch/pytorch.git
+        # 只获取 main 分支，不拉取标签
+        git fetch upstream main --no-tags
+        # 手动拉取以 v 开头的标签，过滤掉带有 ^{} 的无效引用
+        for tag in $(git ls-remote --tags upstream | grep 'refs/tags/v' | grep -v '\^{}' | awk '{print $2}' | sed 's|refs/tags/||'); do
+          git fetch upstream tag $tag
+        done
+
+    # Step 4: 更新 main 分支中的 .gitmodules 文件并同步子模块 URL
+    - name: Update .gitmodules and sync submodules for main branch
+      run: |
+        # 检出 main 分支
+        git checkout main
+        # 如果 .gitmodules 存在，则进行替换
+        if [ -f .gitmodules ]; then
+          echo "Updating .gitmodules in main branch..."
+          # 只替换未被修改过的 URL
+          sed -i 's|^\([[:space:]]*url = \)https://github.com| \1https://ghp.ci/https://github.com|g' .gitmodules
+          git add .gitmodules
+          git commit -m "Update .gitmodules URLs for main branch"
+          # 同步子模块 URL
+          git submodule sync
+        else
+          echo ".gitmodules not found in main branch, skipping..."
+        fi
+
+    # Step 5: 更新以 v 开头的标签对应的分支中的 .gitmodules 文件并同步子模块 URL
+    - name: Update .gitmodules and sync submodules for tags starting with 'v'
+      run: |
+        # 遍历所有以 v 开头的标签
+        for tag in $(git tag -l 'v*'); do
+          echo "Processing tag $tag..."
+          # 检出标签到临时分支
+          git checkout tags/$tag -b temp-$tag
+          # 如果 .gitmodules 存在，则进行替换
+          if [ -f .gitmodules ]; then
+            echo "Updating .gitmodules in tag $tag..."
+            # 只替换未被修改过的 URL
+            sed -i 's|^\([[:space:]]*url = \)https://github.com| \1https://ghp.ci/https://github.com|g' .gitmodules
+            git add .gitmodules
+            git commit -m "Update .gitmodules URLs for tag $tag"
+            # 同步子模块 URL
+            git submodule sync
+            # 推送临时分支以更新标签
+            git push origin temp-$tag
+            # 删除临时分支
+            git branch -d temp-$tag
+          else
+            echo ".gitmodules not found in tag $tag, skipping..."
+          fi
+        done
+
+    # Step 6: 推送所有更改
+    - name: Push changes
+      run: |
+        # 推送 main 分支
+        echo "Pushing main branch..."
+        git push origin main
+        # 推送所有标签
+        for tag in $(git tag -l 'v*'); do
+          echo "Pushing tag $tag..."
+          git push origin refs/tags/$tag
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 使用 GitHub token 进行身份验证
