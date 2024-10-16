@@ -137,6 +137,7 @@ class TritonTemplateKernel(TritonKernel):
         suffix_args=0,
         epilogue_fn=identity,
         subgraphs: Optional[List[ir.ComputedBuffer]] = None,
+        workspace_size=0,
         *,
         index_dtype,
     ) -> None:
@@ -164,6 +165,11 @@ class TritonTemplateKernel(TritonKernel):
         self.triton_meta: Optional[Dict[str, object]] = None
         # For Templated Attention this can be a list of ir.Subgraph
         self.subgraphs: Optional[List[ir.ComputedBuffer]] = subgraphs
+
+        # Some templates use extra global memory as a workspace
+        self.workspace_size = workspace_size
+        if self.workspace_size > 0:
+            self.args.workspace(workspace_size, False)
 
         # The following attributes (body, template_mask, output_val) are all
         # used for triton kernel codegen.
@@ -557,6 +563,13 @@ class TritonTemplateKernel(TritonKernel):
     def call_kernel(self, name: str, node: Optional[ir.IRNode] = None):
         wrapper = V.graph.wrapper_code
         _, call_args, _, arg_types = self.args.python_argdefs()
+
+        # Handle workspace allocation
+        if self.workspace_size > 0:
+            wrapper.generate_workspace_allocation(
+                self.workspace_size, V.graph.scheduler.current_device, False
+            )
+
         if V.graph.cpp_wrapper:
             # In the cpp_wrapper case, we have to compute CUDA launch grid at runtime
             # if any dynamic dimension is involved. We rely on the Python version
@@ -622,6 +635,7 @@ class TritonTemplate(KernelTemplate):
         subgraphs=None,
         mutated_inputs=None,
         call_sizes=None,
+        workspace_size=0,
         **kwargs,
     ):
         """This function generates a TritonTemplateCaller
@@ -659,26 +673,27 @@ class TritonTemplate(KernelTemplate):
         if call_sizes is None:
             call_sizes = layout.size
 
-        kernel_options = dict(
-            input_nodes=input_nodes,
-            defines=defines,
-            num_stages=num_stages,
-            num_warps=num_warps,
-            grid_fn=self.grid,
-            meta=kwargs,
-            call_sizes=call_sizes,
-            prefix_args=prefix_args,
-            suffix_args=suffix_args,
-            epilogue_fn=epilogue_fn,
-            index_dtype="tl.int32",
-            subgraphs=subgraphs,
-        )
+        kernel_options = {
+            "input_nodes": input_nodes,
+            "defines": defines,
+            "num_stages": num_stages,
+            "num_warps": num_warps,
+            "grid_fn": self.grid,
+            "meta": kwargs,
+            "call_sizes": call_sizes,
+            "prefix_args": prefix_args,
+            "suffix_args": suffix_args,
+            "epilogue_fn": epilogue_fn,
+            "index_dtype": "tl.int32",
+            "subgraphs": subgraphs,
+        }
 
         with patch.object(
             V.graph, "get_dtype", self._fake_get_dtype(fake_out)
         ), TritonTemplateKernel(
             kernel_name=kernel_name,
             output_node=fake_out,
+            workspace_size=workspace_size,
             use_jit=False,
             **kernel_options,
         ) as kernel:
@@ -733,6 +748,7 @@ class TritonTemplate(KernelTemplate):
             kernel = TritonTemplateKernel(
                 kernel_name=str(Placeholder.KERNEL_NAME),
                 output_node=out_node,
+                workspace_size=workspace_size,
                 use_jit=False,
                 **kernel_options,
             )
@@ -791,6 +807,7 @@ class TritonTemplate(KernelTemplate):
                 "acc_type": str(kwargs.get("ACC_TYPE", None)),
             },
             mutated_inputs=mutated_inputs,
+            workspace_size=workspace_size,
         )
 
 
@@ -864,6 +881,7 @@ class TritonTemplateCaller(ir.TritonTemplateCallerBase):
             Dict[str, Union[PrimitiveInfoType, List[PrimitiveInfoType]]]
         ] = None,
         mutated_inputs=None,
+        workspace_size=0,
     ) -> None:
         super().__init__(name, input_nodes, layout, description)
         self.make_kernel_render = make_kernel_render
@@ -880,6 +898,7 @@ class TritonTemplateCaller(ir.TritonTemplateCallerBase):
             }
         )
         self.mutated_inputs = mutated_inputs
+        self.workspace_size = workspace_size
 
     def benchmark(self, *args, out):
         assert self.bmreq is not None
@@ -910,6 +929,7 @@ class TritonTemplateCaller(ir.TritonTemplateCallerBase):
                 inputs=self.input_nodes,
                 make_kernel_render=self.make_kernel_render,
                 mutated_inputs=self.mutated_inputs,
+                workspace_size=self.workspace_size,
             )
         )
 
